@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Value Gradient Guidance for Flow Matching Alignment (VGG-Flow)"
+    />
+    <title>VGG-Flow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/css/site.css" />
+    <script src="assets/js/site.js" defer></script>
+    <script>
+      window.MathJax = {
+        tex: { inlineMath: [["\\(", "\\)"], ["$", "$"]] },
+      };
+    </script>
+    <script
+      id="MathJax-script"
+      defer
+      src="assets/vendor/mathjax/tex-svg.js"
+    ></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <a class="brand" href="#top">VGG-Flow</a>
+        <nav class="nav-links">
+          <a href="#overview">Overview</a>
+          <a href="#abstract">Abstract</a>
+          <a href="#method">Method</a>
+          <a href="#results">Results</a>
+          <a href="#citation">Citation</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero reveal">
+        <div class="container">
+          <p class="venue">NeurIPS 2025</p>
+          <h1>Value Gradient Guidance for Flow Matching Alignment</h1>
+          <p class="subtitle">
+            Fast and prior-preserving reward finetuning for flow matching models
+            via value gradient matching.
+          </p>
+
+          <p class="authors">
+            Zhen Liu<sup>1,&dagger;</sup>, Tim Z. Xiao<sup>2,*</sup>, Carles
+            Domingo-Enrich<sup>3,*</sup>, Weiyang Liu<sup>4</sup>, Dinghuai
+            Zhang<sup>3,5,&dagger;</sup>
+          </p>
+          <p class="affiliations">
+            <sup>1</sup>The Chinese University of Hong Kong (Shenzhen)
+            <span class="dot">|</span>
+            <sup>2</sup>University of Tuebingen
+            <span class="dot">|</span>
+            <sup>3</sup>Microsoft Research
+            <span class="dot">|</span>
+            <sup>4</sup>The Chinese University of Hong Kong
+            <span class="dot">|</span>
+            <sup>5</sup>Mila - Quebec AI Institute
+          </p>
+          <p class="notes">
+            <sup>*</sup>Equal contribution
+            <span class="dot">|</span>
+            <sup>&dagger;</sup>Corresponding author
+          </p>
+
+          <div class="link-row">
+            <a class="btn primary" href="https://arxiv.org/abs/2512.05116"
+              >arXiv</a
+            >
+            <a class="btn" href="fig/vggflow_paper.pdf">Paper PDF</a>
+          </div>
+        </div>
+      </section>
+
+      <section id="overview" class="section reveal">
+        <div class="container card">
+          <h2>Overview</h2>
+          <figure>
+            <img
+              src="fig/teaser_pipeline.png"
+              alt="VGG-Flow pipeline and finetuning trajectory visualization"
+            />
+            <figcaption>
+              VGG-Flow aligns a pretrained flow model by matching the residual
+              velocity field with a value-gradient guidance signal.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="abstract" class="section reveal">
+        <div class="container card prose">
+          <h2>Abstract</h2>
+          <p class="abstract-text">
+            VGG-Flow is a gradient-matching method for aligning pretrained flow
+            matching models with reward functions while preserving the base
+            prior. The method is motivated by optimal control: the residual
+            velocity field of the finetuned model should match the gradient of a
+            value function. VGG-Flow uses this principle to directly inject
+            first-order reward information and combines it with a practical
+            forward-looking value-gradient parameterization for fast adaptation.
+            On Stable Diffusion 3 reward finetuning tasks (Aesthetic Score,
+            HPSv2, and PickScore), the method shows strong reward improvement
+            with better diversity and prior preservation.
+          </p>
+        </div>
+      </section>
+
+      <section id="method" class="section reveal">
+        <div class="container card">
+          <h2>Method Explained</h2>
+          <p class="section-intro">
+            VGG-Flow starts from an optimal-control objective, derives
+            value-gradient matching from the HJB equation, then trains a
+            value-gradient model and flow model jointly with three losses.
+          </p>
+
+          <div class="method-stack">
+            <article class="method-step">
+              <h3>0. Flow Matching Preliminaries</h3>
+              <p>
+                A flow matching model starts from Gaussian noise and maps it to
+                a data sample by integrating a learned ODE velocity field.
+              </p>
+              <p class="latex-block">
+                \[
+                x_0 \sim \mathcal{N}(0, I), \qquad \dot{x}_t =
+                v_{\theta}(x_t,t), \quad t \in [0,1], \qquad x_1 = x(t=1).
+                \]
+              </p>
+              <p>
+                VGG-Flow finetunes this velocity field while preserving the base
+                prior through a control-style regularization.
+              </p>
+            </article>
+
+            <article class="method-step">
+              <h3>1. Alignment Objective</h3>
+              <p>
+                Finetune a base velocity field with a reward objective plus a
+                quadratic control cost that keeps the model close to the
+                pretrained prior.
+              </p>
+              <p class="latex-block">
+                \[
+                \min_{\theta}\,\mathbb{E}_{x_0\sim p_0,\dot{x}_t=v_{\theta}(x_t,t)}
+                \left[\frac{\lambda}{2}\int_{0}^{1}\left\lVert
+                \tilde{v}_{\theta}(x_t,t)\right\rVert^2\,dt-r(x_1)\right],\quad
+                v_{\theta}(x_t,t)\triangleq
+                v_{\mathrm{base}}(x_t,t)+\tilde{v}_{\theta}(x_t,t).
+                \]
+              </p>
+            </article>
+
+            <article class="method-step">
+              <h3>2. HJB Condition and Control Law</h3>
+              <p>
+                Applying HJB yields the optimal residual velocity and links it
+                directly to the value-function gradient.
+              </p>
+              <p class="latex-block">
+                \[
+                \partial_tV(x,t)+\min_{\tilde{v}}\left[\nabla V(x,t)\cdot
+                \big(v_{\mathrm{base}}(x,t)+\tilde{v}(x,t)\big)
+                +\frac{\lambda}{2}\|\tilde{v}(x,t)\|^2\right]=0.
+                \]
+              </p>
+              <p class="key-equation-label">
+                Direct HJB result: <strong>Value Gradient Matching</strong>
+              </p>
+              <p class="latex-block latex-compact">
+                \[
+                \tilde{v}^{\star}(x,t)=-\frac{1}{\lambda}\nabla V(x,t).
+                \]
+              </p>
+              <p class="key-equation-label">
+                Direct HJB result: <strong>Value Consistency</strong>
+              </p>
+              <p class="latex-block">
+                \[
+                \partial_tV(x,t)=\frac{1}{2\lambda}\|\nabla V(x,t)\|^2-\nabla
+                V(x,t)\cdot v_{\mathrm{base}}(x,t).
+                \]
+              </p>
+            </article>
+
+            <article class="method-step">
+              <h3>3. Value-Gradient Parameterization</h3>
+              <p>
+                The value gradient is parameterized with a forward-looking term:
+                reward gradient from a one-step Euler prediction plus a learnable
+                residual.
+              </p>
+              <p class="latex-block latex-compact">
+                \[
+                g_{\phi}(x,t)\triangleq\nabla V_{\phi}(x,t).
+                \]
+              </p>
+              <p class="latex-block">
+                \[
+                g_{\phi}(x,t)\triangleq-\eta_t\cdot\operatorname{stop\mbox{-}gradient}
+                \left(\nabla_{x_t}r\!\left(\hat{x}_1(x_t,t)\right)\right)+\nu_{\phi}(x_t,t).
+                \]
+              </p>
+            </article>
+
+            <article class="method-step">
+              <h3>4. Training Losses</h3>
+              <p>
+                The final training objective combines matching loss, consistency
+                loss, and boundary loss.
+              </p>
+              <p class="latex-block">
+                \[
+                \mathcal{L}_{\mathrm{matching}}(\theta)=
+                \mathbb{E}_{x_0\sim\mathcal{N}(0,I),\dot{x}_t=v(x_t,t)}
+                \left\lVert\tilde{v}_{\theta}(x_t,t)+\beta g_{\phi}(x_t,t)\right\rVert^2.
+                \]
+              </p>
+              <p class="latex-block">
+                \[
+                \mathcal{L}_{\mathrm{consistency}}(\phi)=
+                \mathbb{E}_{x_0\sim\mathcal{N}(0,I),\dot{x}_t=v(x_t,t)}
+                \left\lVert\frac{\partial}{\partial t}g_{\phi}
+                +[\nabla g_{\phi}]^{\top}(v_{\mathrm{base}}-\beta g_{\phi})
+                +[\nabla v_{\mathrm{base}}]^{\top}g_{\phi}\right\rVert^2.
+                \]
+              </p>
+              <p class="latex-block">
+                \[
+                \mathcal{L}_{\mathrm{boundary}}(\phi)=
+                \mathbb{E}_{x_0\sim\mathcal{N}(0,I),\dot{x}_t=v(x_t,t)}
+                \left\lVert g_{\phi}(x_1,1)+\nabla r(x_1)\right\rVert^2.
+                \]
+              </p>
+              <p class="latex-block">
+                \[
+                \mathcal{L}_{\mathrm{total}}(\theta,\phi)=
+                \mathcal{L}_{\mathrm{matching}}(\theta)+
+                \mathcal{L}_{\mathrm{consistency}}(\phi)+
+                \alpha\mathcal{L}_{\mathrm{boundary}}(\phi).
+                \]
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="results" class="section reveal">
+        <div class="container card">
+          <h2>Results</h2>
+
+          <figure class="result-block">
+            <img src="fig/result_table.png" alt="Main quantitative result table" />
+            <figcaption>
+              Quantitative comparison on Aesthetic Score, HPSv2, and PickScore.
+            </figcaption>
+          </figure>
+
+          <div class="dataset-block">
+            <h3>Aesthetic Score</h3>
+            <div class="plot-grid">
+              <figure>
+                <img
+                  src="fig/aestheticscore_convergence.png"
+                  alt="Aesthetic Score convergence curves"
+                />
+                <figcaption>Convergence during finetuning.</figcaption>
+              </figure>
+              <figure>
+                <img
+                  src="fig/aestheticscore_paretofront.png"
+                  alt="Aesthetic Score Pareto front"
+                />
+                <figcaption>
+                  Reward, diversity, and prior-preservation trade-off.
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+
+          <div class="dataset-block">
+            <h3>HPSv2</h3>
+            <div class="plot-grid">
+              <figure>
+                <img src="fig/hpsv2_convergence.png" alt="HPSv2 convergence" />
+                <figcaption>Convergence during finetuning.</figcaption>
+              </figure>
+              <figure>
+                <img src="fig/hpsv2_pareto_front.png" alt="HPSv2 Pareto front" />
+                <figcaption>
+                  Reward, diversity, and prior-preservation trade-off.
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+
+          <div class="dataset-block">
+            <h3>PickScore</h3>
+            <div class="plot-grid">
+              <figure>
+                <img
+                  src="fig/pickscore_convergence.png"
+                  alt="PickScore convergence"
+                />
+                <figcaption>Convergence during finetuning.</figcaption>
+              </figure>
+              <figure>
+                <img
+                  src="fig/pickscore_paretofront.png"
+                  alt="PickScore Pareto front"
+                />
+                <figcaption>
+                  Reward, diversity, and prior-preservation trade-off.
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+
+          <div class="dataset-block">
+            <h3>Temperature Ablation</h3>
+            <figure class="result-block">
+              <img
+                src="fig/aestheticscore_temperature_ablation_convergence.png"
+                alt="Aesthetic Score temperature ablation convergence"
+              />
+              <figcaption>
+                Effect of inverse temperature on reward and preservation metrics.
+              </figcaption>
+            </figure>
+          </div>
+
+          <h3>Qualitative Comparisons</h3>
+          <div class="qual-grid">
+            <figure class="qual-card">
+              <img
+                src="fig/aesthetic_comparison_viz_new_poster.png"
+                alt="Aesthetic Score qualitative comparison"
+              />
+              <figcaption>Aesthetic Score qualitative results.</figcaption>
+            </figure>
+            <figure class="qual-card">
+              <img
+                src="fig/hps_comparison_viz_new_poster.png"
+                alt="HPSv2 qualitative comparison"
+              />
+              <figcaption>HPSv2 qualitative results.</figcaption>
+            </figure>
+            <figure class="qual-card">
+              <img
+                src="fig/pickscore_comparison_viz_new_poster.png"
+                alt="PickScore qualitative comparison"
+              />
+              <figcaption>PickScore qualitative results.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section id="citation" class="section reveal">
+        <div class="container card">
+          <h2>BibTeX</h2>
+          <pre><code>@inproceedings{liu2025vggflow,
+  title={Value Gradient Guidance for Flow Matching Alignment},
+  author={Liu, Zhen and Xiao, Tim Z. and Liu, Weiyang and Domingo-Enrich, Carles and Zhang, Dinghuai},
+  booktitle={NeurIPS},
+  year={2025},
+}</code></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <p>
+          Project page inspired by the style of
+          <a href="https://nabla-gfn.github.io/">Nabla-GFlowNet</a>.
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
